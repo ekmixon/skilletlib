@@ -10,7 +10,7 @@ from skilletlib.utils.testing_utils import setup_dir
 setup_dir()
 
 # create our context that will contain only a 'config' variable
-context = dict()
+context = {}
 with open('example_config/config.xml', 'r') as config:
     context['config'] = config.read()
 

@@ -36,11 +36,11 @@ class DockerSkillet(Skillet):
         # also grab the working dir that should be used in the app, this will depend on any volumes that may be
         # passed in as well
         if 'app_data' in s and isinstance(s['app_data'], dict):
-            self.volumes = s['app_data'].get('volumes', list())
+            self.volumes = s['app_data'].get('volumes', [])
             self.working_dir = s['app_data'].get('working_dir', '/app')
             self.user = s['app_data'].get('user', 0)
         else:
-            self.volumes = list()
+            self.volumes = []
             self.working_dir = None
             self.user = 0
 
@@ -51,7 +51,7 @@ class DockerSkillet(Skillet):
         if hasattr(self, 'snippets'):
             return self.snippets
 
-        snippet_list = list()
+        snippet_list = []
 
         for user_snippet_def in self.snippet_stack:
 
@@ -63,11 +63,7 @@ class DockerSkillet(Skillet):
             # this is needed for host directory mapping for volume mounts
             snippet_def['skillet_path'] = self.path
 
-            if self.volumes:
-                snippet_def['volumes'] = self.volumes
-            else:
-                snippet_def['volumes'] = list()
-
+            snippet_def['volumes'] = self.volumes or []
             # ensure working dir gets passed in as well...
             # prefer working set on the snippet metadata
             # then prefer

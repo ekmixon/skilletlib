@@ -59,27 +59,15 @@ class DockerSnippet(Snippet):
 
         self.detach = self.metadata.get('async', False)
 
-        if self.detach:
-            self.auto_remove = False
-        else:
-            self.auto_remove = True
-
-        # set up volumes
-        # A dictionary to configure volumes mounted inside the container.
-        # The key is either the host path or a volume name, and the value is a dictionary with the keys:
-        #     bind The path to mount the volume inside the container
-        #     mode Either rw to mount the volume read/write, or ro to mount it
-
-        volumes = self.metadata.get('volumes', dict())
-
-        if not volumes:
-            self.volumes = {self.path: {'bind': self.working_dir, 'mode': 'rw'}}
-
-        else:
+        self.auto_remove = not self.detach
+        if volumes := self.metadata.get('volumes', {}):
             self.volumes = volumes
             # if we have a volume passed in, ensure the working dir is set to the path of this skillet so
             # relative commands will work as intended
             self.working_dir = self.path
+
+        else:
+            self.volumes = {self.path: {'bind': self.working_dir, 'mode': 'rw'}}
 
         # track our container
         self.container_id = ''
@@ -99,7 +87,7 @@ class DockerSnippet(Snippet):
 
             vols = self.volumes
 
-            image = self.image + ":" + self.tag
+            image = f"{self.image}:{self.tag}"
             logger.info('Creating container...')
             return_data = self.client.containers.run(image, self.metadata['cmd'], volumes=vols, stderr=True,
                                                      detach=self.detach, working_dir=self.working_dir,
@@ -110,17 +98,15 @@ class DockerSnippet(Snippet):
                 # return_data will be a Container object if self.detach is True
                 self.container_id = return_data.id
                 output = self.container_id
-                print('container id is ' + self.container_id)
+                print(f'container id is {self.container_id}')
                 return output, 'running'
 
             else:
-                # return_data will be the bytes returned from the command
-                if type(return_data) is bytes:
-                    return_str = return_data.decode('UTF-8')
-                    return return_str, self.__get_container_status()
-                else:
+                if type(return_data) is not bytes:
                     return return_data, self.__get_container_status()
 
+                return_str = return_data.decode('UTF-8')
+                return return_str, self.__get_container_status()
         except ImageNotFound:
             logger.error(traceback.format_exc())
             raise SkilletLoaderException(f'Could not locate image {self.image} in {self.name}')
@@ -165,9 +151,8 @@ class DockerSnippet(Snippet):
             if container.status == 'running':
                 return return_str, 'running'
 
-            else:
-                logger.info(container.status)
-                return return_str, self.__get_container_status()
+            logger.info(container.status)
+            return return_str, self.__get_container_status()
 
         except APIError as ae:
             raise SkilletLoaderException(f'Could not get logs for {self.name}: {ae}')
@@ -180,15 +165,10 @@ class DockerSnippet(Snippet):
         """
 
         container = self.get_container()
-        if container.status != 'running':
-            rc = container.attrs['State']['ExitCode']
-            if rc == 0:
-                return 'success'
-            else:
-                return 'failure'
-
-        else:
+        if container.status == 'running':
             return 'success'
+        rc = container.attrs['State']['ExitCode']
+        return 'success' if rc == 0 else 'failure'
 
     def cleanup(self) -> None:
         """
@@ -200,9 +180,7 @@ class DockerSnippet(Snippet):
             return
 
         try:
-            container = self.get_container()
-
-            if container:
+            if container := self.get_container():
                 if container.status != 'running':
                     container.remove()
                 else:
@@ -214,8 +192,7 @@ class DockerSnippet(Snippet):
     @staticmethod
     def __clean_output(return_data: Any) -> str:
         if type(return_data) is bytes:
-            return_str = return_data.decode('UTF-8')
-            return return_str
+            return return_data.decode('UTF-8')
         else:
             return str(return_data)
 
@@ -240,9 +217,7 @@ class DockerSnippet(Snippet):
 
         # iterate over each var, get it's value from the context, quote it, and set back into the context
         for v in affected_vars:
-            if v in context:
-                # only quote things that have special chars, otherwise leave it alone
-                if all_non_safe.search(context[v]):
-                    context[v] = shlex.quote(context[v])
+            if v in context and all_non_safe.search(context[v]):
+                context[v] = shlex.quote(context[v])
 
         return super().render_metadata(context)

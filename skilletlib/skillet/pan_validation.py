@@ -28,21 +28,21 @@ class PanValidationSkillet(PanosSkillet):
 
     def get_snippets(self) -> List[PanValidationSnippet]:
 
-        if hasattr(self, 'snippets'):
-            if self.initialized and self.allow_snippet_cache:
-                return self.snippets
+        if (
+            hasattr(self, 'snippets')
+            and self.initialized
+            and self.allow_snippet_cache
+        ):
+            return self.snippets
 
         snippet_path_str = self.skillet_dict.get('snippet_path', '')
         snippet_path = Path(snippet_path_str)
-        snippet_list = list()
+        snippet_list = []
         for snippet_def in self.snippet_stack:
             if 'cmd' not in snippet_def:
                 snippet_def['cmd'] = 'validate'
-            elif snippet_def['cmd'] == 'validate_xml':
+            elif snippet_def['cmd'] in ['validate_xml', 'set']:
                 snippet_def = self.load_element(snippet_def, snippet_path)
-            elif snippet_def['cmd'] == 'set':
-                snippet_def = self.load_element(snippet_def, snippet_path)
-
             if 'severity' not in snippet_def:
                 snippet_def['severity'] = 'low'
 
@@ -81,12 +81,11 @@ class PanValidationSkillet(PanosSkillet):
         :return: dictionary with the aforementioned keys
         """
         # do not call super() as this subclasses panos and not base directly
-        results = dict()
-        results['snippets'] = dict()
-        results['pan_validation'] = dict()
-
-        # addition for #124 - ensure captured_outputs are present in the output as well
-        results['outputs'] = self.captured_outputs
+        results = {
+            'snippets': {},
+            'pan_validation': {},
+            'outputs': self.captured_outputs,
+        }
 
         default_doc_link = self.labels.get('default_documentation_link', None)
 
@@ -95,17 +94,15 @@ class PanValidationSkillet(PanosSkillet):
             cmd = s.cmd
             # handle both validate and validate_xml here
             if snippet_name in self.captured_outputs \
-                    and 'validate' in cmd:
+                        and 'validate' in cmd:
 
-                # looping is supported for pan_validation
-                if isinstance(self.captured_outputs[snippet_name], list):
-                    result_list = self.captured_outputs[snippet_name]
-                else:
-                    result_list = [{snippet_name: self.captured_outputs[snippet_name]}]
+                result_list = (
+                    self.captured_outputs[snippet_name]
+                    if isinstance(self.captured_outputs[snippet_name], list)
+                    else [{snippet_name: self.captured_outputs[snippet_name]}]
+                )
 
-                loop_counter = 0
-
-                for output_result in result_list:
+                for loop_counter, output_result in enumerate(result_list):
                     if snippet_name in output_result and 'results' in output_result[snippet_name]:
                         result = output_result[snippet_name]['results']
 
@@ -119,7 +116,5 @@ class PanValidationSkillet(PanosSkillet):
                         else:
                             results['pan_validation'][f'{snippet_name}_{loop_counter}'] = output_result[snippet_name]
                             results['snippets'][f'{snippet_name}_{loop_counter}'] = result
-
-                    loop_counter += 1
 
         return self._parse_output_template(results)

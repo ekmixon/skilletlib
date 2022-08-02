@@ -20,7 +20,7 @@ class TemplateSkillet(Skillet):
         if hasattr(self, 'snippets'):
             return self.snippets
 
-        snippet_list = list()
+        snippet_list = []
         for snippet_def in self.snippet_stack:
             if 'element' not in snippet_def or snippet_def['element'] == '':
                 template_str = self.load_template(snippet_def.get('file', ''))
@@ -53,10 +53,7 @@ class TemplateSkillet(Skillet):
         """
 
         results = super()._get_snippet_results()
-        cleaned_results = dict()
-        cleaned_results['snippets'] = dict()
-        # include outputs for #104
-        cleaned_results['outputs'] = self.captured_outputs
+        cleaned_results = {'snippets': {}, 'outputs': self.captured_outputs}
         snippets = results.get('snippets', {})
         for k, v in snippets.items():
             if v != '':

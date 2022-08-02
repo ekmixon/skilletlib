@@ -54,9 +54,6 @@ class PanosSnippet(TemplateSnippet):
             self.cmd = 'set'
             metadata['cmd'] = 'set'
 
-        elif metadata['cmd'] == 'op':
-            self.cmd = metadata['cmd']
-
         else:
             self.cmd = metadata['cmd']
 
@@ -155,7 +152,7 @@ class PanosSnippet(TemplateSnippet):
             if 'xpath_from' in metadata:
                 return metadata
             err = 'xpath_from attribute is required for clone cmd'
-        elif self.cmd == 'op' or self.cmd == 'cli':
+        elif self.cmd in ['op', 'cli']:
             if 'cmd_str' in metadata:
                 return metadata
             err = 'cmd_str attribute is required for op or cli cmd'
@@ -171,10 +168,11 @@ class PanosSnippet(TemplateSnippet):
                 return metadata
             err = 'variable and outputs are required attributes for parse cmd'
         elif self.cmd == 'validate_xml':
-            if {'xpath'}.issubset(metadata):
-                if 'file' in metadata or 'element' in metadata:
-                    metadata['output_type'] = 'validation'
-                    return metadata
+            if {'xpath'}.issubset(metadata) and (
+                'file' in metadata or 'element' in metadata
+            ):
+                metadata['output_type'] = 'validation'
+                return metadata
             err = 'xpath and file or element are required attributes for validate_xml cmd'
         elif self.cmd == 'noop':
             if 'output_type' not in metadata:
@@ -224,7 +222,7 @@ class PanosSnippet(TemplateSnippet):
         # to the element in question. It will also load the element from our source element or source file into the
         # element attribute
 
-        if element == '' or element is None:
+        if not element or element is None:
             logger.warning('Element was blank for validate_xml test!')
             return False
 
@@ -234,10 +232,7 @@ class PanosSnippet(TemplateSnippet):
 
         config_element_str = elementTree.tostring(config_element).strip()
         diffs = xmldiff_main.diff_texts(config_element_str, element)
-        if len(diffs) == 0:
-            return True
-
-        return False
+        return len(diffs) == 0
 
     def cherry_pick_element(self, element: str, cherry_pick_path: str) -> str:
         """
@@ -259,8 +254,7 @@ class PanosSnippet(TemplateSnippet):
             if cherry_picked_element is None:
                 raise SkilletLoaderException('Could not locate cherry_pick path in source xml! '
                                              'Check the cherry_pick xpath!')
-            new_element = elementTree.tostring(cherry_picked_element).strip()
-            return new_element
+            return elementTree.tostring(cherry_picked_element).strip()
 
         except ParseError:
             raise SkilletLoaderException(f'Could not parse element for cherry picking for snippet: {self.name}')
@@ -284,9 +278,7 @@ class PanosSnippet(TemplateSnippet):
         :return: combined and rendered xpath
         """
 
-        if base_xpath.endswith('/'):
-            base_xpath = base_xpath[:-1]
-
+        base_xpath = base_xpath.removesuffix('/')
         if cherry_picked_xpath.startswith('./'):
             cherry_picked_xpath = cherry_picked_xpath[2:]
         elif cherry_picked_xpath.startswith('/'):
@@ -330,10 +322,4 @@ class PanosSnippet(TemplateSnippet):
         :return: dict of default outputs
         """
 
-        r = {
-            self.name: {
-                'results': status,
-                'changed': self.destructive
-            }
-        }
-        return r
+        return {self.name: {'results': status, 'changed': self.destructive}}

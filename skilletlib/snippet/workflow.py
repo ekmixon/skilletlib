@@ -46,13 +46,18 @@ class WorkflowSnippet(Snippet):
 
     def update_snippet_context(self, context) -> dict:
 
-        filter_snippets = dict()
-        for filter_def in ('include_by_tag', 'include_by_name', 'include_by_regex', 'exclude_by_tag',
-                           'exclude_by_name', 'exclude_by_regex'):
-            if filter_def in self.metadata and self.metadata[filter_def] != '':
-                filter_snippets[filter_def] = self.metadata[filter_def]
-
-        if filter_snippets:
+        if filter_snippets := {
+            filter_def: self.metadata[filter_def]
+            for filter_def in (
+                'include_by_tag',
+                'include_by_name',
+                'include_by_regex',
+                'exclude_by_tag',
+                'exclude_by_name',
+                'exclude_by_regex',
+            )
+            if filter_def in self.metadata and self.metadata[filter_def] != ''
+        }:
             context['__filter_snippets'] = filter_snippets
 
         # transform the context for this snippet
@@ -66,19 +71,16 @@ class WorkflowSnippet(Snippet):
             output = self.skillet.execute(snippet_context)
             return output, 'success'
         except SkilletLoaderException as sle:
-            output = dict()
-            output['fail_message'] = sle
+            output = {'fail_message': sle}
             return output, 'failure'
 
     def capture_outputs(self, results: (dict, str), status: str) -> Union[str, dict]:
-        if type(results) is dict and 'outputs' in results:
-            if type(results['outputs']) is dict:
-                return results['outputs']
-            else:
-                logger.info('unknown results type in workflow:capture_outputs')
-                return dict()
-        else:
-            return dict()
+        if type(results) is not dict or 'outputs' not in results:
+            return {}
+        if type(results['outputs']) is dict:
+            return results['outputs']
+        logger.info('unknown results type in workflow:capture_outputs')
+        return {}
 
     def transform_context(self, context: dict) -> dict:
         """
@@ -102,7 +104,7 @@ class WorkflowSnippet(Snippet):
         :return: dict containing transformed variables
         """
 
-        transformed_context = dict()
+        transformed_context = {}
 
         if 'transform' not in self.metadata:
             return transformed_context

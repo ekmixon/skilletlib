@@ -28,7 +28,7 @@ class Python3Skillet(Skillet):
         if hasattr(self, 'snippets'):
             return self.snippets
 
-        snippet_list = list()
+        snippet_list = []
         for snippet_def in self.snippet_stack:
             snippet = Python3Snippet(snippet_def)
             snippet_list.append(snippet)

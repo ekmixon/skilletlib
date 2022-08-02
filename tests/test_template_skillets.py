@@ -3,7 +3,7 @@ from skilletlib.utils.testing_utils import setup_dir
 
 setup_dir()
 
-context = dict()
+context = {}
 
 
 def load_and_execute_skillet(skillet_path: str) -> dict:
@@ -13,9 +13,7 @@ def load_and_execute_skillet(skillet_path: str) -> dict:
     print('=' * 80)
     print(f'Executing {skillet.label}\n'.center(80))
 
-    output: dict = skillet.execute(context)
-
-    return output
+    return skillet.execute(context)
 
 
 def test_inline_template():

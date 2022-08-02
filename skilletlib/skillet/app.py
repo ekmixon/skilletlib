@@ -19,5 +19,5 @@ from .base import Skillet
 
 class AppSkillet(Skillet):
 
-    def get_snippets(self) -> list():
-        return list()
+    def get_snippets(self) -> []:
+        return []

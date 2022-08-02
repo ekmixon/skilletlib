@@ -63,36 +63,29 @@ class PanosSkillet(Skillet):
         :return: context with additional initialized items
         """
 
-        # if the panoply object was not passed in via __init__, then check for online vs offline mode here
-        # which set of fields we find in the context will determine online vs offline mode
-        online_required_fields = {'panos_hostname', 'panos_username', 'panos_password'}
-
-        # deprecated legacy fields
-        legacy_required_fields = {'TARGET_IP', 'TARGET_USERNAME', 'TARGET_PASSWORD'}
-
-        # simplified version
-        provider_required_fields = {'ip_address', 'username', 'password'}
-
-        # also allow api_key auth as well
-        api_key_required_fields = {'ip_address', 'api_key'}
-
-        # support for offline mode requires at least the 'config' variable to be present
-        offline_required_fields = {'config'}
-
         context = super().initialize_context(initial_context)
 
         if self.panoply is None:
+            # simplified version
+            provider_required_fields = {'ip_address', 'username', 'password'}
+
+            # also allow api_key auth as well
+            api_key_required_fields = {'ip_address', 'api_key'}
+
+            offline_required_fields = {'config'}
+            online_required_fields = {'panos_hostname', 'panos_username', 'panos_password'}
+            legacy_required_fields = {'TARGET_IP', 'TARGET_USERNAME', 'TARGET_PASSWORD'}
             if not online_required_fields.issubset(initial_context) \
-                    and not offline_required_fields.issubset(initial_context) \
-                    and not legacy_required_fields.issubset(initial_context) \
-                    and not provider_required_fields.issubset(initial_context) \
-                    and not api_key_required_fields.issubset(initial_context):
+                        and not offline_required_fields.issubset(initial_context) \
+                        and not legacy_required_fields.issubset(initial_context) \
+                        and not provider_required_fields.issubset(initial_context) \
+                        and not api_key_required_fields.issubset(initial_context):
                 raise SkilletValidationException('Required fields for panos skillet not found in context!')
 
             if online_required_fields.issubset(initial_context):
-                hostname = initial_context.get('panos_hostname', None)
-                username = initial_context.get('panos_username', None)
-                password = initial_context.get('panos_password', None)
+                hostname = initial_context.get('panos_hostname')
+                username = initial_context.get('panos_username')
+                password = initial_context.get('panos_password')
                 port = initial_context.get('panos_port', '443')
 
                 self.panoply = self.__init_panoply(hostname, username, password, port)
@@ -100,9 +93,9 @@ class PanosSkillet(Skillet):
                 context['config'] = self.panoply.get_configuration()
 
             elif legacy_required_fields.issubset(initial_context):
-                hostname = initial_context.get('TARGET_IP', None)
-                username = initial_context.get('TARGET_USERNAME', None)
-                password = initial_context.get('TARGET_PASSWORD', None)
+                hostname = initial_context.get('TARGET_IP')
+                username = initial_context.get('TARGET_USERNAME')
+                password = initial_context.get('TARGET_PASSWORD')
                 port = initial_context.get('TARGET_PORT', '443')
 
                 self.panoply = self.__init_panoply(hostname, username, password, port)
@@ -135,18 +128,14 @@ class PanosSkillet(Skillet):
                 # init panoply in offline mode
                 self.panoply = self.__init_panoply()
 
-        else:
-            # we were passed in a panoply object already, check if we are connected and grab the configuration if so
-            if self.panoply.connected:
-                context['config'] = self.panoply.get_configuration()
+        elif self.panoply.connected:
+            context['config'] = self.panoply.get_configuration()
 
-            else:
-                # fix for #110
-                if 'config' not in context:
-                    # allow the config to be set in the context by the user. This ensures calling initialize_context
-                    # twice does not trigger this exception. Only through it when we are not connected and the user
-                    # has not set the config variable
-                    raise SkilletLoaderException('Could not get configuration! Not connected to PAN-OS Device')
+        elif 'config' not in context:
+            # allow the config to be set in the context by the user. This ensures calling initialize_context
+            # twice does not trigger this exception. Only through it when we are not connected and the user
+            # has not set the config variable
+            raise SkilletLoaderException('Could not get configuration! Not connected to PAN-OS Device')
 
         self.initialized = True
         return context
@@ -175,17 +164,21 @@ class PanosSkillet(Skillet):
 
         :return: a List of PanosSnippets
         """
-        if hasattr(self, 'snippets'):
-            if self.initialized and self.allow_snippet_cache:
-                return self.snippets
+        if (
+            hasattr(self, 'snippets')
+            and self.initialized
+            and self.allow_snippet_cache
+        ):
+            return self.snippets
 
-        snippet_list = list()
+        snippet_list = []
 
         for snippet_def in self.snippet_stack:
 
-            if 'cmd' not in snippet_def or snippet_def['cmd'] == 'set':
-                if 'element' not in snippet_def or snippet_def['element'] == '':
-                    snippet_def['element'] = self.load_template(snippet_def['file'])
+            if ('cmd' not in snippet_def or snippet_def['cmd'] == 'set') and (
+                'element' not in snippet_def or snippet_def['element'] == ''
+            ):
+                snippet_def['element'] = self.load_template(snippet_def['file'])
 
             snippet = PanosSnippet(snippet_def, self.panoply)
             snippet_list.append(snippet)
@@ -219,7 +212,9 @@ class PanosSkillet(Skillet):
 
             if 'file' not in snippet_def:
                 raise SkilletLoaderException(
-                    'YAMLError: Could not parse metadata file for snippet %s' % snippet_def['name'])
+                    f"YAMLError: Could not parse metadata file for snippet {snippet_def['name']}"
+                )
+
 
             snippet_file = snippet_path.joinpath(snippet_def['file']).resolve()
 
@@ -293,9 +288,8 @@ class PanosSkillet(Skillet):
                 if v.get('results', 'failure') != 'success':
                     skillet_result = 'failure'
                     self.success = False
-                else:
-                    if v.get('changed', False):
-                        changed = True
+                elif v.get('changed', False):
+                    changed = True
 
         results['result'] = skillet_result
         results['changed'] = changed

@@ -53,11 +53,7 @@ exclude_patterns = []
 #
 on_rtd = os.environ.get("READTHEDOCS", None) == "True"
 
-if on_rtd:
-    html_theme = "default"
-else:
-    html_theme = "sphinx_rtd_theme"
-
+html_theme = "default" if on_rtd else "sphinx_rtd_theme"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".

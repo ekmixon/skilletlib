@@ -83,7 +83,7 @@ class RestSnippet(TemplateSnippet):
 
     def execute(self, raw_context: dict) -> Tuple[str, str]:
 
-        context = dict()
+        context = {}
 
         if raw_context is not None:
             # always enforce quotes in the context

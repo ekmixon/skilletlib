@@ -117,10 +117,7 @@ class Panoply:
             if '403' in err_msg:
                 raise TargetLoginException('Invalid credentials logging into device')
 
-            elif 'Errno 111' in err_msg:
-                raise TargetConnectionException('Error contacting the device at the given IP / hostname')
-
-            elif 'Errno 60' in err_msg:
+            elif 'Errno 111' in err_msg or 'Errno 60' in err_msg:
                 raise TargetConnectionException('Error contacting the device at the given IP / hostname')
 
             else:
@@ -152,16 +149,13 @@ class Panoply:
             if '403' in err_msg:
                 raise LoginException('Invalid credentials logging into device')
 
-            else:
+            if not allow_offline:
+                raise PanoplyException('Could not connect to device!')
 
-                if allow_offline:
-                    logger.debug('FYI - Device is not currently available')
-                    self.connected = False
-                    self.connected_message = 'device is not currently available'
-                    return None
-
-                else:
-                    raise PanoplyException('Could not connect to device!')
+            logger.debug('FYI - Device is not currently available')
+            self.connected = False
+            self.connected_message = 'device is not currently available'
+            return None
 
         else:
             self.connected = True
@@ -261,28 +255,23 @@ class Panoply:
         if results is None:
             return False
 
-        if force_sync:
-            embedded_result = None
-            try:
-                doc = ElementTree.XML(results)
-                embedded_result = doc.find('result')
-
-            except ParseError:
-                # results can be malformed xml from gpcs
-                if 'jobid' in results:
-                    return True
-
-            if embedded_result is not None:
-                commit_result = embedded_result.text
-
-                if commit_result == 'FAIL':
-                    return False
-
-                else:
-                    return True
-        else:
+        if not force_sync:
             # fixme - is there something else we can check here?
             return True
+        embedded_result = None
+        try:
+            doc = ElementTree.XML(results)
+            embedded_result = doc.find('result')
+
+        except ParseError:
+            # results can be malformed xml from gpcs
+            if 'jobid' in results:
+                return True
+
+        if embedded_result is not None:
+            commit_result = embedded_result.text
+
+            return commit_result != 'FAIL'
 
     def set_at_path(self, name: str, xpath: str, xml_str: str) -> None:
         """
@@ -316,11 +305,7 @@ class Panoply:
 
         try:
             self.xapi.op(cmd=cmd_str, cmd_xml=cmd_xml)
-            if parse_result:
-                return self.xapi.xml_result()
-            else:
-                return self.xapi.xml_document
-
+            return self.xapi.xml_result() if parse_result else self.xapi.xml_document
         except PanXapiError as pxe:
             if 'ParseError' in str(pxe):
                 # some op commands do not properly wrap data in CDATA tags, so let's try to
@@ -381,28 +366,23 @@ class Panoply:
         # in all other cases, the xpath is a required attribute
         kwargs = {
             'xpath': ''.join(params['xpath'].strip().split('\n')),
-            'extra_qs': params.get('extra_qs', dict())
+            'extra_qs': params.get('extra_qs', {}),
         }
+
 
         try:
 
-            if cmd in ('set', 'edit', 'override'):
+            if cmd in {'set', 'edit', 'override'}:
                 kwargs['element'] = params['element'].strip()
 
-            if cmd in ('move',):
+            if cmd in {'move'}:
                 kwargs['where'] = params['where']
                 # dst is optional
-                kwargs['dst'] = params.get('dst', None)
+                kwargs['dst'] = params.get('dst')
 
-            if cmd in ('rename', 'clone'):
-
-                if 'new_name' in params:
-                    kwargs['newname'] = params['new_name']
-
-                else:
-                    kwargs['newname'] = params['newname']
-
-            if cmd in ('clone',):
+            if cmd in {'rename', 'clone'}:
+                kwargs['newname'] = params.get('new_name', params['newname'])
+            if cmd in {'clone'}:
                 kwargs['xpath_from'] = params['xpath_from']
 
         except KeyError as ke:
@@ -424,11 +404,12 @@ class Panoply:
         :return: True when license installation succeeds / False otherwise
         """
 
-        if self.facts.get('family', '') == 'vm':
-
-            if self.facts.get('vm-license', 'none') != 'none':
-                logger.debug('This VM is already licensed')
-                return True
+        if (
+            self.facts.get('family', '') == 'vm'
+            and self.facts.get('vm-license', 'none') != 'none'
+        ):
+            logger.debug('This VM is already licensed')
+            return True
 
         try:
             cmd = f'<request><license><fetch><auth-code>{auth_code}</auth-code></fetch></license></request>'
@@ -440,19 +421,20 @@ class Panoply:
             if 'License installed' in results:
                 return True
 
-            else:
-                logger.warning('Unexpected Results from fetch_license')
-                logger.warning(results)
-                return False
+            logger.warning('Unexpected Results from fetch_license')
+            logger.warning(results)
+            return False
 
         except PanXapiError as pxe:
             # bug present in 9.0.4 that returns content-type of xml but the content is only text.
             # this causes a ParseError to be thrown, however, the operation was actually successful
 
-            if 'ParseError' in str(pxe):
-
-                if self.xapi.xml_document is not None and 'License installed' in self.xapi.xml_document:
-                    return True
+            if (
+                'ParseError' in str(pxe)
+                and self.xapi.xml_document is not None
+                and 'License installed' in self.xapi.xml_document
+            ):
+                return True
 
             logger.error(f'Caught Exception in fetch_license: {pxe}')
 
@@ -493,10 +475,9 @@ class Panoply:
             if 'successfully set' in results:
                 return True
 
-            else:
-                logger.warning('Unexpected Results from set_license_api_key')
-                logger.warning(results)
-                return False
+            logger.warning('Unexpected Results from set_license_api_key')
+            logger.warning(results)
+            return False
 
         except PanoplyException as pxe:
             logger.error(f'Caught Exception in set_license_api_key: {pxe}')
@@ -522,14 +503,12 @@ class Panoply:
             logger.debug('This VM is already de-licensed')
             return True
 
-        if api_key is not None:
-
-            if not self.set_license_api_key(api_key):
-                return False
+        if api_key is not None and not self.set_license_api_key(api_key):
+            return False
 
         try:
             cmd = '<request><license><deactivate><VM-Capacity><mode>auto</mode>' \
-                  '</VM-Capacity></deactivate></license></request>'
+                      '</VM-Capacity></deactivate></license></request>'
             logger.debug(f'Using request cmd: {cmd}')
             results = self.execute_op(cmd)
             logger.debug(f'deactivate_vm_license results: {results}')
@@ -537,10 +516,9 @@ class Panoply:
             if 'Successfully deactivated' in results:
                 return True
 
-            else:
-                logger.warning('Unexpected Results from deactivate_vm_license')
-                logger.warning(results)
-                return False
+            logger.warning('Unexpected Results from deactivate_vm_license')
+            logger.warning(results)
+            return False
 
         except PanoplyException as pxe:
             logger.error(f'Caught Exception in deactivate_vm_license: {pxe}')
@@ -570,7 +548,7 @@ class Panoply:
         :return:  xml results from the op command sequence
         """
 
-        d = datetime.datetime.today()
+        d = datetime.datetime.now()
         tstamp = d.strftime('%Y%m%d%H%M%S')
         cmd = f'<save><config><to>config-backup-{tstamp}.xml</to></config></save>'
         try:
@@ -603,7 +581,7 @@ class Panoply:
         results = xmltodict.parse(results_xml_str)
 
         if 'system' in results:
-            facts.update(results['system'])
+            facts |= results['system']
 
         self.xapi.show(xpath="./devices/entry[@name='localhost.localdomain']/deviceconfig/system")
         results_xml_str = self.xapi.xml_result()
@@ -661,20 +639,19 @@ class Panoply:
             raise PanoplyException('Could not determine sw-version to load baseline configuration!')
 
         version = self.facts['sw-version']
-        context = dict()
-        context['ADMINISTRATOR_USERNAME'] = self.user
-        context['ADMINISTRATOR_PASSWORD'] = self.pw
-        # fix for #50 - always set DNS values
-        context['DNS_1'] = self.facts['dns-primary']
-        context['DNS_2'] = self.facts['dns-secondary']
+        context = {
+            'ADMINISTRATOR_USERNAME': self.user,
+            'ADMINISTRATOR_PASSWORD': self.pw,
+            'DNS_1': self.facts['dns-primary'],
+            'DNS_2': self.facts['dns-secondary'],
+        }
 
         if self.facts['model'] == 'Panorama':
             skillet_type_dir = 'panorama'
 
-            if not reset_hostname:
-                context['PANORAMA_NAME'] = self.facts['hostname']
-            else:
-                context['PANORAMA_NAME'] = 'baseline'
+            context['PANORAMA_NAME'] = (
+                'baseline' if reset_hostname else self.facts['hostname']
+            )
 
             # FIXME - is there a way to determine if dhcp is active via an op cmd?
             context['PANORAMA_TYPE'] = 'static'
@@ -685,11 +662,7 @@ class Panoply:
         else:
             skillet_type_dir = 'panos'
 
-            if not reset_hostname:
-                context['FW_NAME'] = self.facts['hostname']
-            else:
-                context['FW_NAME'] = 'baseline'
-
+            context['FW_NAME'] = 'baseline' if reset_hostname else self.facts['hostname']
             if self.facts['is-dhcp'] == 'no':
                 context['MGMT_TYPE'] = 'static'
                 context['MGMT_IP'] = self.facts['ip-address']
@@ -788,11 +761,7 @@ class Panoply:
         cmd = f'<load><config><from>{filename}</from></config></load>'
         self.xapi.op(cmd=cmd)
 
-        if self.xapi.status == 'success':
-            return True
-
-        else:
-            return False
+        return self.xapi.status == 'success'
 
     def has_running_jobs(self) -> bool:
         """
@@ -807,7 +776,7 @@ class Panoply:
 
         running_jobs_list = jobs_element.xpath(".//jobs/status[text() != 'FIN']")
 
-        return True if running_jobs_list else False
+        return bool(running_jobs_list)
 
     def wait_for_device_ready(self, interval=30, timeout=600) -> bool:
         """
@@ -843,9 +812,8 @@ class Panoply:
                     # continue to wait until there are no more jobs
                     # FIXME - should probably enhance this to only check for auto-commit job, it's possible there
                     # can be other jobs running with a busy / heavily used panorama instance
-                    if is_panorama:
-                        if not self.has_running_jobs():
-                            return True
+                    if is_panorama and not self.has_running_jobs():
+                        return True
 
                     if resp.strip() == 'yes':
                         return True
@@ -879,7 +847,7 @@ class Panoply:
 
         if self.facts.get('model', '') != 'Panorama':
             logger.info('Method only supported on Panorama Devices')
-            return list()
+            return []
 
         connected_devices_xml = self.execute_cli('show devices connected')
         connected_devices_dict = xmltodict.parse(connected_devices_xml)
@@ -888,13 +856,13 @@ class Panoply:
             connected_devices = connected_devices_dict['devices']['entry']
 
         else:
-            return list()
+            return []
 
         if not filter_terms:
             # no terms given, return all devices
             return connected_devices
 
-        filtered_devices = list()
+        filtered_devices = []
 
         for device in connected_devices:
             match = False
@@ -902,11 +870,7 @@ class Panoply:
             for term in filter_terms:
                 if term in device:
 
-                    if re.match(filter_terms[term], device[term]):
-                        match = True
-                    else:
-                        match = False
-
+                    match = bool(re.match(filter_terms[term], device[term]))
             if match:
                 filtered_devices.append(device)
 
@@ -928,8 +892,8 @@ class Panoply:
 
             logger.info(f'Downloading Dynamic Content of type: {content_type}')
             cmd = f'<request>' \
-                  f'<{content_type}><upgrade><download><latest/></download></upgrade></{content_type}>' \
-                  f'</request>'
+                      f'<{content_type}><upgrade><download><latest/></download></upgrade></{content_type}>' \
+                      f'</request>'
 
             self.xapi.op(cmd=cmd)
             results_element = self.xapi.element_result
@@ -943,7 +907,7 @@ class Panoply:
 
             logger.info(f'Installing newer {content_type}')
             install_cmd = f'<request><{content_type}><upgrade><install>' \
-                          f'<version>latest</version><commit>no</commit></install></upgrade></{content_type}></request>'
+                              f'<version>latest</version><commit>no</commit></install></upgrade></{content_type}></request>'
 
             self.xapi.op(cmd=install_cmd)
             results_element = self.xapi.element_result
@@ -996,12 +960,7 @@ class Panoply:
                     latest_version_second = version_second
                     latest_version_current = current
 
-            if latest_version_current == 'yes':
-                return None
-
-            else:
-                return latest_version
-
+            return None if latest_version_current == 'yes' else latest_version
         except PanXapiError:
             return None
 
@@ -1140,7 +1099,7 @@ class Panoply:
         :return: list of saved configurations
         """
 
-        saved_configurations = list()
+        saved_configurations = []
         try:
             if not self.connected:
                 return saved_configurations
@@ -1152,9 +1111,11 @@ class Panoply:
 
             response_root = self.xapi.element_root
             config_items = response_root.findall('.//completion')
-            for config in config_items:
-                if 'value' in config.attrib:
-                    saved_configurations.append(config.attrib['value'])
+            saved_configurations.extend(
+                config.attrib['value']
+                for config in config_items
+                if 'value' in config.attrib
+            )
 
             return saved_configurations
 
@@ -1221,7 +1182,7 @@ class Panoply:
 
     def get_configuration_versions(self):
 
-        versions = list()
+        versions = []
         try:
             if not self.connected:
                 return versions
@@ -1292,14 +1253,14 @@ class Panoply:
         previous_doc = etree.fromstring(previous_config)
 
         current_xpath = '.'
-        not_found_xpaths = list()
+        not_found_xpaths = []
 
         for c in latest_doc:
-            o_xpath = current_xpath + '/' + c.tag
+            o_xpath = f'{current_xpath}/{c.tag}'
             these_not_found_xpaths = self.__check_element(c, o_xpath, previous_doc, [])
             not_found_xpaths.extend(these_not_found_xpaths)
 
-        snippets = list()
+        snippets = []
 
         for xpath in not_found_xpaths:
 
@@ -1333,10 +1294,12 @@ class Panoply:
 
             random_name = str(int(random.random() * 1000000))
 
-            snippet = dict()
-            snippet['name'] = f'{tag}-{random_name}'
-            snippet['xpath'] = set_xpath
-            snippet['element'] = xml_string.strip()
+            snippet = {
+                'name': f'{tag}-{random_name}',
+                'xpath': set_xpath,
+                'element': xml_string.strip(),
+            }
+
             snippet['full_xpath'] = xpath
             snippets.append(snippet)
 
@@ -1431,7 +1394,7 @@ class Panoply:
         l_set = l_config.set_cli('set ', xpath='./')
 
         # diffs = [item for item in l_set if item not in p_set]
-        diffs = list()
+        diffs = []
 
         for cmd in l_set:
 
@@ -1457,10 +1420,7 @@ class Panoply:
         :return: a list of xpaths that have not been found in the previous_config at this level
         """
 
-        # first, check the previous_config to see if this xpath exists there
-        found_elements = pc.xpath(xpath)
-
-        if found_elements:
+        if found_elements := pc.xpath(xpath):
             found_element = found_elements[0]
             # this xpath exists in the previous_config, now iterate through all the children
             children = el.findall('./')
@@ -1497,12 +1457,7 @@ class Panoply:
             for e in el:
 
                 if e.attrib:
-                    attribs = list()
-
-                    for k, v in e.attrib.items():
-
-                        if k != 'uuid':
-                            attribs.append(f'@{k}="{v}"')
+                    attribs = [f'@{k}="{v}"' for k, v in e.attrib.items() if k != 'uuid']
 
                     # fix for #71
                     attrib_str = " and ".join(attribs)
@@ -1510,27 +1465,22 @@ class Panoply:
                     # xpath later
                     path_entry = f'{e.tag}[{attrib_str}]'
 
+                elif is_list:
+
+                    path_entry = (
+                        f'{e.tag}[text()="{e.text.strip()}"]'
+                        if e.text.strip() != ''
+                        else f'{e.tag}[{index}]'
+                    )
+
                 else:
-                    # no attributes but this is a list, so include the index value in the xpath to check
-                    # this will be used to grab the changed element later, but will be removed from the xpath
-                    # as it is not necessary in PAN-OS (double check this please)
-
-                    if is_list:
-
-                        if e.text.strip() != '':
-                            path_entry = f'{e.tag}[text()="{e.text.strip()}"]'
-
-                        else:
-                            path_entry = f'{e.tag}[{index}]'
-
-                    else:
-                        # just append the tag to the xpath and move on
-                        path_entry = e.tag
+                    # just append the tag to the xpath and move on
+                    path_entry = e.tag
 
                 # craft our new xpath to check
-                n_xpath = xpath + '/' + path_entry
+                n_xpath = f'{xpath}/{path_entry}'
                 # do it all over again
-                new_not_founds = self.__check_element(e, n_xpath, pc, list())
+                new_not_founds = self.__check_element(e, n_xpath, pc, [])
                 # add any child xpaths that weren't found with any found here for return up the stack
                 not_founds.extend(new_not_founds)
                 # increase our index for the next iteration
@@ -1567,14 +1517,14 @@ class Panoply:
 
         xpaths, post_xpaths = self.get_ordered_xpaths()
 
-        ordered_snippets = list()
+        ordered_snippets = []
         for x in xpaths:
             found_snippets = self.__filter_snippets_by_xpath(snippets, x)
             for s in found_snippets:
                 if s not in ordered_snippets:
                     ordered_snippets.append(s)
 
-        post_snippets = list()
+        post_snippets = []
         for p in post_xpaths:
             filtered_snippets = self.__filter_snippets_by_xpath(snippets, p)
             for f in filtered_snippets:
@@ -1601,9 +1551,9 @@ class Panoply:
         :return: a list of ordered set commands
         """
 
-        ordered_set_commands = list()
+        ordered_set_commands = []
 
-        fake_snippets = list()
+        fake_snippets = []
 
         # little bit of a hack here
         # our set commands can contain slashes like `set mgmt-config ip-address 10.10.10.1/24` and we ultimately
@@ -1612,8 +1562,7 @@ class Panoply:
         slash_marker = '****'
 
         for set_cmd in set_commands:
-            snippet = dict()
-            snippet['full_xpath'] = set_cmd.replace('/', slash_marker).replace(' ', '/')
+            snippet = {'full_xpath': set_cmd.replace('/', slash_marker).replace(' ', '/')}
             fake_snippets.append(snippet)
 
         ordered_fake_snippets = self.__order_snippets(fake_snippets)
@@ -1636,7 +1585,7 @@ class Panoply:
         :param xpath: xpath to check
         :return: list of only those that contain the xpath in their full_xpath attribute
         """
-        filtered_snippets = list()
+        filtered_snippets = []
 
         split_pattern = re.compile(r'/devices/.*?/|vsys/.*?/')
 

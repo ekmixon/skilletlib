@@ -104,7 +104,7 @@ class Snippet(ABC):
                 setattr(self, k, v)
                 self.metadata[k] = v
 
-        self.context = dict()
+        self.context = {}
 
     def update_context(self, context: dict) -> dict:
         """
@@ -175,40 +175,39 @@ class Snippet(ABC):
         # by default, nothing is filtered out
         is_filtered = None
 
-        if '__filter_snippets' in context:
-            logger.debug('filtering snippet...')
-
-            fc = context['__filter_snippets']
-            if type(fc) is not dict:
-                logger.warning('Snippet filter is malformed...')
-                return False
-            for filter_def in ('include_by_tag', 'include_by_name', 'include_by_regex', 'exclude_by_tag',
-                               'exclude_by_name', 'exclude_by_regex'):
-                if filter_def in fc:
-                    if type(fc[filter_def]) is list:
-                        for item in fc[filter_def]:
-                            is_filtered = self.__consider_filter(filter_def, item)
-                            # we have discovered this snippet should not be filtered, jump out now
-                            if is_filtered is not None:
-                                return is_filtered
-
-                    elif type(fc[filter_def]) is str:
-                        item = fc[filter_def]
-                        is_filtered = self.__consider_filter(filter_def, item)
-
-                # we have discovered this snippet should not be filtered, jump out now
-                if is_filtered is not None:
-                    return is_filtered
-
-            # we have considered all rules, and still no determination, however, because we have some rules due to
-            # presence of '__filter_snippets' any item that is not specifically included or excluded, should be
-            # excluded
-
-            if is_filtered is None:
-                return True
-        else:
+        if '__filter_snippets' not in context:
             # there is not filter snippets config present, so include all snippets by default
             return False
+        logger.debug('filtering snippet...')
+
+        fc = context['__filter_snippets']
+        if type(fc) is not dict:
+            logger.warning('Snippet filter is malformed...')
+            return False
+        for filter_def in ('include_by_tag', 'include_by_name', 'include_by_regex', 'exclude_by_tag',
+                           'exclude_by_name', 'exclude_by_regex'):
+            if filter_def in fc:
+                if type(fc[filter_def]) is list:
+                    for item in fc[filter_def]:
+                        is_filtered = self.__consider_filter(filter_def, item)
+                        # we have discovered this snippet should not be filtered, jump out now
+                        if is_filtered is not None:
+                            return is_filtered
+
+                elif type(fc[filter_def]) is str:
+                    item = fc[filter_def]
+                    is_filtered = self.__consider_filter(filter_def, item)
+
+            # we have discovered this snippet should not be filtered, jump out now
+            if is_filtered is not None:
+                return is_filtered
+
+        # we have considered all rules, and still no determination, however, because we have some rules due to
+        # presence of '__filter_snippets' any item that is not specifically included or excluded, should be
+        # excluded
+
+        if is_filtered is None:
+            return True
 
     def __consider_filter(self, filter_def: str, item: str) -> (bool, None):
         """
@@ -219,32 +218,32 @@ class Snippet(ABC):
         :param item: specific filter item
         :return: bool or None if not match
         """
-        if filter_def == 'include_by_name':
-            # this name matches, do NOT filter it out
-            if self.name == item:
-                return False
-
-        elif filter_def == 'exclude_by_name':
+        if filter_def == 'exclude_by_name':
             # name matches exclusion rule, filter it out
             if self.name == item:
                 return True
-
-        if filter_def == 'include_by_tag':
-            if self.__has_tag(item):
-                # snippet has this tag, do not filter out
-                return False
 
         elif filter_def == 'exclude_by_tag':
             if self.__has_tag(item):
                 # snippet has this tag, filter it out
                 return True
 
+        elif filter_def == 'include_by_name':
+            # this name matches, do NOT filter it out
+            if self.name == item:
+                return False
+
+        elif filter_def == 'include_by_tag':
+            if self.__has_tag(item):
+                # snippet has this tag, do not filter out
+                return False
+
         if '_by_regex' in filter_def:
             match = re.match(item, self.name)
-            if 'include_by_regex' == filter_def:
+            if filter_def == 'include_by_regex':
                 if match:
                     return False
-            elif 'exclude_by_regex' == filter_def:
+            elif filter_def == 'exclude_by_regex':
                 if match:
                     return True
 
@@ -267,14 +266,9 @@ class Snippet(ABC):
             if loop_var_name not in self.context:
                 return default_list
 
-            loop_var = self.context.get(loop_var_name, list())
+            loop_var = self.context.get(loop_var_name, [])
 
-            if isinstance(loop_var, list):
-                return loop_var
-
-            else:
-                return [loop_var]
-
+            return loop_var if isinstance(loop_var, list) else [loop_var]
         return default_list
 
     def __has_tag(self, tag_to_check: str) -> bool:
@@ -299,11 +293,7 @@ class Snippet(ABC):
         else:
             return False
 
-        for tag in tags_list:
-            if tag_to_check == tag:
-                return True
-
-        return False
+        return any(tag_to_check == tag for tag in tags_list)
 
     def execute_conditional(self, test: str, context: dict) -> bool:
         """
@@ -317,10 +307,7 @@ class Snippet(ABC):
             test_str = '{{%- if {0} -%}} True {{%- else -%}} False {{%- endif -%}}'.format(test)
             test_template = self._env.from_string(test_str)
             results = test_template.render(context)
-            if str(results).strip() == 'True':
-                return True
-            else:
-                return False
+            return str(results).strip() == 'True'
         except UndefinedError as ude:
             logger.error(ude)
             # always return false on error condition
@@ -357,13 +344,7 @@ class Snippet(ABC):
         :return: dict of default outputs
         """
 
-        r = {
-            self.name: {
-                'results': status,
-                'raw': results
-            }
-        }
-        return r
+        return {self.name: {'results': status, 'raw': results}}
 
     def capture_outputs(self, results: str, status: str) -> dict:
         """
@@ -374,7 +355,7 @@ class Snippet(ABC):
         :return: a dictionary containing all captured variables
         """
 
-        captured_outputs = dict()
+        captured_outputs = {}
 
         output_type = self.metadata.get('output_type', self.output_type)
 
@@ -395,7 +376,7 @@ class Snippet(ABC):
 
         for output in self.metadata['outputs']:
 
-            outputs = dict()
+            outputs = {}
 
             if 'name' not in output:
                 continue
@@ -416,21 +397,20 @@ class Snippet(ABC):
             elif 'capture_expression' in output:
                 expression = self._env.compile_expression(output['capture_expression'])
                 value = expression(self.context)
-                if isinstance(value, list) and 'filter_items' in output:
-                    outputs[output['name']] = self.__filter_outputs(output, value, self.context)
-                else:
-                    outputs[output['name']] = value
+                outputs[output['name']] = (
+                    self.__filter_outputs(output, value, self.context)
+                    if isinstance(value, list) and 'filter_items' in output
+                    else value
+                )
 
-            else:
-
-                if output_type == 'xml':
-                    outputs = self.__handle_xml_outputs(output, results)
-                elif output_type == 'manual':
-                    outputs = self.__handle_manual_outputs(output, results)
-                elif output_type == 'text':
-                    outputs = self.__handle_text_outputs(output, results)
-                elif output_type == 'json':
-                    outputs = self.__handle_json_outputs(output, results)
+            elif output_type == 'xml':
+                outputs = self.__handle_xml_outputs(output, results)
+            elif output_type == 'manual':
+                outputs = self.__handle_manual_outputs(output, results)
+            elif output_type == 'text':
+                outputs = self.__handle_text_outputs(output, results)
+            elif output_type == 'json':
+                outputs = self.__handle_json_outputs(output, results)
             # elif output_type == 'base64':
             #     outputs = self._handle_base64_outputs(results)
 
@@ -443,7 +423,7 @@ class Snippet(ABC):
             # elif hasattr(self, f'handle_output_type_{output_type}'):
             #     func = getattr(self, f'handle_output_type_{output_type}')
             #     outputs = func(results)
-            captured_outputs.update(outputs)
+            captured_outputs |= outputs
             self.context.update(outputs)
 
         return captured_outputs
@@ -473,21 +453,19 @@ class Snippet(ABC):
         test_str = output_definition['filter_items']
 
         # keep a new list of all the items that have matched the test
-        filtered_items = list()
+        filtered_items = []
 
         if isinstance(output, list):
             for item in output:
                 local_context['item'] = item
-                results = self.execute_conditional(test_str, local_context)
-                if results:
+                if results := self.execute_conditional(test_str, local_context):
                     filtered_items.append(item)
 
             return filtered_items
 
-        elif isinstance(output, str) or isinstance(output, dict):
+        elif isinstance(output, (str, dict)):
             local_context['item'] = output
-            results = self.execute_conditional(test_str, local_context)
-            if results:
+            if results := self.execute_conditional(test_str, local_context):
                 filtered_items.append(output)
 
         return filtered_items
@@ -533,7 +511,7 @@ class Snippet(ABC):
         :return: list of str representing output variable names
         """
 
-        return [x['name'] for x in self.metadata.get('outputs', dict()) if 'name' in x]
+        return [x['name'] for x in self.metadata.get('outputs', {}) if 'name' in x]
 
     def get_snippet_variables(self) -> list:
         """
@@ -542,7 +520,7 @@ class Snippet(ABC):
         :return: list of str representing variables found in the jinja templates
         """
 
-        variables = list()
+        variables = []
         for i in self.template_metadata:
             if i in self.metadata:
 
@@ -612,17 +590,11 @@ class Snippet(ABC):
                     self.metadata[key_name] = rendered_str
 
                 elif isinstance(key, dict):
-                    rendered_dict = dict()
-                    for k, v in key.items():
-                        rendered_dict[k] = self.render(v, context)
-
+                    rendered_dict = {k: self.render(v, context) for k, v in key.items()}
                     self.metadata[key_name] = rendered_dict
 
                 elif isinstance(key, list):
-                    rendered_list = list()
-                    for v in key:
-                        rendered_list.append(self.render(v, context))
-
+                    rendered_list = [self.render(v, context) for v in key]
                     self.metadata[key_name] = rendered_list
 
         return self.metadata
@@ -658,27 +630,27 @@ class Snippet(ABC):
         :param obj: object to be queried
         """
 
+
+
         class CustomFunctions(jmespath_functions.Functions):
             """Custom jmespath functions"""
 
             @jmespath_functions.signature({'types': ['string']})
             def _func_remove_proto(self, s):
                 """Remove protocols from URL's, such as https://"""
-                if re.search("^[a-zA-Z]{0,5}://", s):
-                    return s[s.index('//') + 2:]
-                return s
+                return s[s.index('//') + 2:] if re.search("^[a-zA-Z]{0,5}://", s) else s
 
             @jmespath_functions.signature({'types': ['string']}, {'types': ['string']})
             def _func_regex_matches(self, s, r):
                 """Remove protocols from URL's, such as https://"""
                 return bool(re.search(r, s))
 
+
         options = jmespath.Options(custom_functions=CustomFunctions())
 
         if not isinstance(query, str):
             raise SkilletLoaderException('json_query requires an argument of type str')
-        path = jmespath.search(query, obj, options=options)
-        return path
+        return jmespath.search(query, obj, options=options)
 
     @staticmethod
     def _slugify(txt: str) -> str:
@@ -713,14 +685,15 @@ class Snippet(ABC):
             return False
 
         if type(parent_obj) is OrderedDict or type(parent_obj) is dict:
-            if attribute_name in parent_obj:
-                if attribute_value == parent_obj[attribute_name]:
-                    return True
+            if (
+                attribute_name in parent_obj
+                and attribute_value == parent_obj[attribute_name]
+            ):
+                return True
         elif type(parent_obj) is list:
             for p in parent_obj:
-                if attribute_name in p:
-                    if attribute_value == p[attribute_name]:
-                        return True
+                if attribute_name in p and attribute_value == p[attribute_name]:
+                    return True
 
         return False
 
@@ -735,10 +708,9 @@ class Snippet(ABC):
         :return: bool
         """
 
-        if self._node_attribute_present(obj, config_path, attribute_name, attribute_value):
-            return False
-
-        return True
+        return not self._node_attribute_present(
+            obj, config_path, attribute_name, attribute_value
+        )
 
     def _node_present(self, obj: dict, config_path: str) -> bool:
         try:
@@ -780,10 +752,7 @@ class Snippet(ABC):
             raise SkilletLoaderException('Incorrect object format for get_value_from_path')
 
         if '.' in config_path or '/' in config_path:
-            if '.' in config_path:
-                separator = '.'
-            else:
-                separator = '/'
+            separator = '.' if '.' in config_path else '/'
             path_elements = config_path.split(separator)
             first_path_element = path_elements[0]
             p0 = self._check_inner_object(obj, first_path_element)
@@ -805,11 +774,7 @@ class Snippet(ABC):
 
     def _node_absent(self, obj, child_key) -> bool:
 
-        out = self._node_present(obj, child_key)
-        if out:
-            return False
-
-        return True
+        return not (out := self._node_present(obj, child_key))
 
     @staticmethod
     def _append_uuid(string_input: str) -> str:
@@ -869,15 +834,15 @@ class Snippet(ABC):
                 else:
                     item2 = self._get_value_from_path(second_item, list2_path)
 
-                if isinstance(item2, list):
-                    if item in item2:
-                        found = True
-                        break
-                elif isinstance(item2, str):
-                    if item == item2:
-                        found = True
-                        break
-
+                if (
+                    isinstance(item2, list)
+                    and item in item2
+                    or not isinstance(item2, list)
+                    and isinstance(item2, str)
+                    and item == item2
+                ):
+                    found = True
+                    break
             if not found:
                 return False
 
@@ -892,12 +857,7 @@ class Snippet(ABC):
         :param obj: obj to test if in list2
         :param list2: list to test if obj is a member of
         """
-        if isinstance(obj, list):
-            for o in obj:
-                if o in list2:
-                    return True
-            return False
-        return obj in list2
+        return any(o in list2 for o in obj) if isinstance(obj, list) else obj in list2
 
     @staticmethod
     def _permitted_address(obj: dict, permitted: list) -> bool:
@@ -908,11 +868,10 @@ class Snippet(ABC):
         :param permitted: List of permissible address objects in CIDR format
         """
         test_network = ipaddress.ip_network(obj['entry']['ip-netmask'])
-        for network in permitted:
-            if test_network.subnet_of(ipaddress.ip_network(network)):
-                return True
-
-        return False
+        return any(
+            test_network.subnet_of(ipaddress.ip_network(network))
+            for network in permitted
+        )
 
     @staticmethod
     def _difference(list1: list, list2: list) -> list:
@@ -925,7 +884,7 @@ class Snippet(ABC):
         if not isinstance(list1, list) or not isinstance(list2, list):
             raise SkilletLoaderException('difference filter takes only type list for both arguments.')
 
-        return list(set([x for x in list1 if x not in list2]))
+        return list({x for x in list1 if x not in list2})
 
     @staticmethod
     def _listify(obj: Any) -> list:
@@ -954,10 +913,7 @@ class Snippet(ABC):
         if type(obj) is not dict and type(obj) is not OrderedDict:
             return False
 
-        if node_name in obj:
-            return True
-
-        return False
+        return node_name in obj
 
     def __init_env(self) -> None:
         """
@@ -1014,10 +970,8 @@ class Snippet(ABC):
         :param results: results string from the action
         :return: dict of outputs, in this case a single entry
         """
-        outputs = dict()
         output_name = output_definition.get('name', self.name)
-        outputs[output_name] = ''
-
+        outputs = {output_name: ''}
         # enhancement for https://gitlab.com/panw-gse/as/skilletlib/-/issues/86
         if 'capture_value' in output_definition:
             # allow capture_value to be equivalent to capture_pattern
@@ -1030,16 +984,14 @@ class Snippet(ABC):
         if 'capture_pattern' in output_definition:
             # this is a regex pattern we should use for a match
             pattern = re.compile(output_definition['capture_pattern'])
-            matches = pattern.findall(results)
-            if matches:
+            if matches := pattern.findall(results):
                 # capture pattern should only return the first match
                 outputs[output_name] = matches[0]
 
         elif 'capture_list' in output_definition:
             # this is a regex pattern we should use for a match
             pattern = re.compile(output_definition['capture_list'])
-            matches = pattern.findall(results)
-            if matches:
+            if matches := pattern.findall(results):
                 # capture list should return only the full list of matches unless filter_items is present
                 if 'filter_items' in output_definition:
                     outputs[output_name] = self.__filter_outputs(output_definition, matches, self.context)
@@ -1047,7 +999,7 @@ class Snippet(ABC):
                     outputs[output_name] = matches
             else:
                 # no matches should return an empty list
-                outputs[output_name] = list()
+                outputs[output_name] = []
 
         else:
             output_name = output_definition.get('name', self.name)
@@ -1077,10 +1029,10 @@ class Snippet(ABC):
         :return: dict containing all outputs found from the capture pattern in each output
         """
 
-        captured_output = dict()
+        captured_output = {}
 
         def unique_tag_list(elements: list) -> bool:
-            tag_list = list()
+            tag_list = []
             for el in elements:
                 # some xpath queries can return a list of str
                 if isinstance(el, str):
@@ -1089,12 +1041,7 @@ class Snippet(ABC):
                 if el.tag not in tag_list:
                     tag_list.append(el.tag)
 
-            if len(tag_list) == 1:
-                # all tags in this list are the same
-                return False
-            else:
-                # there are unique tags in this list
-                return True
+            return len(tag_list) != 1
 
         def convert_entry(el: elementTree.Element):
             # force_lists always returns a list even though in most cases, we really only want a single item
@@ -1109,8 +1056,8 @@ class Snippet(ABC):
                 return res
 
             if tag_name in res and \
-                    isinstance(res[tag_name], list) and \
-                    len(res[tag_name]) == 1:
+                        isinstance(res[tag_name], list) and \
+                        len(res[tag_name]) == 1:
                 # unwind unnecessary list at the top level here
                 return {tag_name: res[tag_name][0]}
 
@@ -1157,7 +1104,7 @@ class Snippet(ABC):
                             captured_output[var_name] = entry.tag
                 else:
                     # we have a list of elements returned from the users xpath query
-                    capture_list = list()
+                    capture_list = []
                     # are there unique tags in this list? or is this a list of the same tag names?
                     if unique_tag_list(entries):
                         return_type = 'tag'
@@ -1197,7 +1144,7 @@ class Snippet(ABC):
                     captured_output[var_name] = convert_entry(entries.pop())
 
                 else:
-                    capture_list = list()
+                    capture_list = []
                     for entry in entries:
                         capture_list.append(convert_entry(entry))
 
@@ -1208,7 +1155,7 @@ class Snippet(ABC):
                 capture_pattern = output['capture_list']
                 entries = xml_doc.xpath(capture_pattern)
 
-                capture_list = list()
+                capture_list = []
                 for entry in entries:
                     if isinstance(entry, str):
                         capture_list.append(entry)
@@ -1251,12 +1198,9 @@ class Snippet(ABC):
         :return: dict containing all outputs found from the capture pattern in each output
         """
 
-        outputs = dict()
+        outputs = {}
 
-        snippet_name = 'unknown'
-        if 'name' in self.metadata:
-            snippet_name = self.metadata['name']
-
+        snippet_name = self.metadata['name'] if 'name' in self.metadata else 'unknown'
         try:
             if 'outputs' not in self.metadata:
                 logger.info(f'No output defined in this snippet {snippet_name}')
@@ -1289,7 +1233,7 @@ class Snippet(ABC):
         :param results: string as returned from some action, to be parsed as JSON
         :return: dict containing all outputs found from the capture pattern in each output
         """
-        captured_output = dict()
+        captured_output = {}
 
         local_context = self.context.copy()
         output = self.__render_output_metadata(output_definition, local_context)
@@ -1318,7 +1262,7 @@ class Snippet(ABC):
                 var_name = output['name']
 
                 # short cut for just getting all the results
-                if capture_pattern == '$' or capture_pattern == '.':
+                if capture_pattern in ['$', '.']:
                     captured_output[var_name] = json_object
                     continue
 
@@ -1328,10 +1272,7 @@ class Snippet(ABC):
                     captured_output[var_name] = str(result[0].value)
                 else:
                     # FR #81 - add ability to capture from a list
-                    capture_list = list()
-                    for r in result:
-                        capture_list.append(r.value)
-
+                    capture_list = [r.value for r in result]
                     captured_output[var_name] = capture_list
 
         except ValueError as ve:
@@ -1351,7 +1292,7 @@ class Snippet(ABC):
         :param results: results from snippet execution, ignored in this method
         :return: dict containing manually defined name / value pair
         """
-        outputs = dict()
+        outputs = {}
 
         if 'name' not in output_definition or 'capture_value' not in output_definition:
             return outputs
@@ -1370,7 +1311,7 @@ class Snippet(ABC):
         :param results: results from snippet execution, ignored in this method
         :return: dict containing manually defined name / value pair
         """
-        outputs = dict()
+        outputs = {}
 
         try:
             if 'outputs' not in self.metadata:

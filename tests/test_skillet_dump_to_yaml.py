@@ -5,7 +5,7 @@ from skilletlib.utils.testing_utils import setup_dir
 
 setup_dir()
 
-context = dict()
+context = {}
 
 
 def load_and_dump_skillet(skillet_path: str) -> str:
@@ -15,9 +15,7 @@ def load_and_dump_skillet(skillet_path: str) -> str:
     print('=' * 80)
     print(f'Checking {skillet.label}\n'.center(80))
 
-    output: str = skillet.dump_yaml()
-
-    return output
+    return skillet.dump_yaml()
 
 
 def test_yaml_load():

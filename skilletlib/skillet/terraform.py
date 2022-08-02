@@ -25,5 +25,4 @@ class TerraformSkillet(Skillet):
     snippet_required_metadata = {}
 
     def get_snippets(self) -> List[Snippet]:
-        snippet_list = list()
-        return snippet_list
+        return []

@@ -3,7 +3,7 @@ from skilletlib.utils.testing_utils import setup_dir
 
 setup_dir()
 
-context = dict()
+context = {}
 
 
 def test_generate_skillet():
@@ -29,10 +29,7 @@ def test_generate_skillet():
 
     generated_skillet_snippets = p.generate_skillet_from_configs(previous_config, latest_config)
 
-    found_ordering = list()
-
-    for snippet in generated_skillet_snippets:
-        found_ordering.append(snippet['xpath'])
+    found_ordering = [snippet['xpath'] for snippet in generated_skillet_snippets]
 
     assert found_ordering == expected_ordering
 

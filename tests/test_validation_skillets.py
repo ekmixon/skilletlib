@@ -7,7 +7,7 @@ from skilletlib.utils.testing_utils import setup_dir
 
 setup_dir()
 
-context = dict()
+context = {}
 with open('example_config/config.xml', 'r') as config:
     context['config'] = config.read()
 

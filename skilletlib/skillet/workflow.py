@@ -44,7 +44,7 @@ class WorkflowSkillet(Skillet):
         return super().initialize_context(initial_context)
 
     def get_snippets(self) -> List[WorkflowSnippet]:
-        snippet_list = list()
+        snippet_list = []
         # chicken / egg avoidance
         if not self.initialized:
             return snippet_list
@@ -66,10 +66,7 @@ class WorkflowSkillet(Skillet):
         snippet_results = super()._get_snippet_results()
 
         # create out results dict for return
-        results = dict()
-        results['outputs'] = self.captured_outputs
-        results['snippets'] = dict()
-
+        results = {'outputs': self.captured_outputs, 'snippets': {}}
         # iterate through all the snippets from the called skillets
         for k, v in snippet_results['snippets'].items():
             # add them to the results dict
@@ -80,7 +77,7 @@ class WorkflowSkillet(Skillet):
 
                 if isinstance(iv, dict):
                     if ik not in results:
-                        results[ik] = dict()
+                        results[ik] = {}
                     results[ik].update(iv)
                 else:
                     # this will overwrite non dict values ?

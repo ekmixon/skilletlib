@@ -54,9 +54,7 @@ class PanValidationSnippet(PanosSnippet):
         if not bool(results):
             results = False
 
-        output = dict()
-        output['results'] = results
-        output['label'] = self.metadata.get('label', '')
+        output = {'results': results, 'label': self.metadata.get('label', '')}
         output['severity'] = self.metadata.get('severity', 'low')
         output['meta'] = self.metadata.get('meta', {})
         output['documentation_link'] = self.metadata.get('documentation_link', '')
@@ -70,6 +68,4 @@ class PanValidationSnippet(PanosSnippet):
             output['output_message'] = self.render(self.metadata.get('fail_message', 'Snippet Validation Failed'),
                                                    self.context)
 
-        o = dict()
-        o[self.name] = output
-        return o
+        return {self.name: output}

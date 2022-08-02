@@ -74,10 +74,10 @@ class Skillet(ABC):
         self.path = self.skillet_dict.get('snippet_path', '')
         self.filename = self.skillet_dict.get('skillet_filename', '.meta-cnc.yaml')
         self.labels = self.skillet_dict['labels']
-        self.collections = self.skillet_dict['labels'].get('collection', list())
-        self.context = dict()
-        self.captured_outputs = dict()
-        self.snippet_outputs = dict()
+        self.collections = self.skillet_dict['labels'].get('collection', [])
+        self.context = {}
+        self.captured_outputs = {}
+        self.snippet_outputs = {}
 
         # ensure all values are set appropriately in the snippet definition
         self.__validate_snippet_metadata()
@@ -88,9 +88,7 @@ class Skillet(ABC):
         # update our list of declared variables
         self.declared_variables = self.get_declared_variables()
 
-        debug = os.environ.get('SKILLET_DEBUG', False)
-
-        if debug:
+        if debug := os.environ.get('SKILLET_DEBUG', False):
             logger.setLevel(logging.DEBUG)
             logger.debug('Debugging output enabled')
 
@@ -102,7 +100,7 @@ class Skillet(ABC):
 
         :return: List of Snippets for this Skillet Class
         """
-        snippet_list = list()
+        snippet_list = []
         for snippet_def in self.snippet_stack:
             snippet = Snippet(snippet_def)
             snippet_list.append(snippet)
@@ -116,7 +114,7 @@ class Skillet(ABC):
         :param template_path: relative path to the template to load
         :return: str contents
         """
-        if template_path == '' or template_path is None:
+        if not template_path or template_path is None:
             logger.error('Refusing to load empty template path')
             return ''
 
@@ -143,11 +141,7 @@ class Skillet(ABC):
         :return: updated context stored on this skillet
         """
         for var in self.variables:
-            if var['name'] in d:
-                self.context[var['name']] = d[var['name']]
-            else:
-                self.context[var['name']] = var['default']
-
+            self.context[var['name']] = d.get(var['name'], var['default'])
         return self.context
 
     def initialize_context(self, initial_context: dict) -> dict:
@@ -176,22 +170,34 @@ class Skillet(ABC):
             type_hint = variable.get('type_hint', 'text')
             if type_hint == "dropdown" and "dd_list" in variable:
                 for item in variable.get('dd_list', []):
-                    if 'key' in item and 'value' in item:
-                        if default == item['key'] and default != item['value']:
-                            # user set the key as the default and not the value, just fix it for them here
-                            variable['default'] = item['value']
+                    if (
+                        'key' in item
+                        and 'value' in item
+                        and default == item['key']
+                        and default != item['value']
+                    ):
+                        # user set the key as the default and not the value, just fix it for them here
+                        variable['default'] = item['value']
             elif type_hint == "radio" and "rad_list" in variable:
                 rad_list = variable['rad_list']
                 for item in rad_list:
-                    if 'key' in item and 'value' in item:
-                        if default == item['key'] and default != item['value']:
-                            variable['default'] = item['value']
+                    if (
+                        'key' in item
+                        and 'value' in item
+                        and default == item['key']
+                        and default != item['value']
+                    ):
+                        variable['default'] = item['value']
             elif type_hint == "checkbox" and "cbx_list" in variable:
                 cbx_list = variable['cbx_list']
                 for item in cbx_list:
-                    if 'key' in item and 'value' in item:
-                        if default == item['key'] and default != item['value']:
-                            variable['default'] = item['value']
+                    if (
+                        'key' in item
+                        and 'value' in item
+                        and default == item['key']
+                        and default != item['value']
+                    ):
+                        variable['default'] = item['value']
 
         return vars_dict
 
@@ -421,9 +427,7 @@ class Skillet(ABC):
 
         :return: dict with 'snippets' key
         """
-        results = dict()
-        results['snippets'] = dict()
-
+        results = {'snippets': {}}
         for s in self.snippet_stack:
             snippet_name = s.get('name', '')
 
@@ -451,8 +455,8 @@ class Skillet(ABC):
                 template_snippet = SimpleTemplateSnippet(output_template)
                 # create context dict for template parsing
                 # add all outputs as 'top-level' attributes
-                context = dict()
-                context.update(results.get('outputs', {}))
+                context = {}
+                context |= results.get('outputs', {})
                 context['snippet_outputs'] = self.snippet_outputs
                 context['captured_outputs'] = self.captured_outputs
                 context['context'] = self.context
@@ -509,10 +513,10 @@ class Skillet(ABC):
     def __normalize_skillet_dict(skillet: dict) -> dict:
 
         if skillet is None:
-            skillet = dict()
+            skillet = {}
 
         if type(skillet) is not dict:
-            skillet = dict()
+            skillet = {}
 
         if 'name' not in skillet:
             skillet['name'] = 'Unknown Skillet'
@@ -527,18 +531,16 @@ class Skillet(ABC):
             skillet['description'] = 'Unknown Skillet'
 
         if 'variables' not in skillet:
-            skillet['variables'] = list()
+            skillet['variables'] = []
 
         if 'snippets' not in skillet:
-            skillet['snippets'] = list()
+            skillet['snippets'] = []
 
         if 'labels' not in skillet:
-            skillet['labels'] = dict()
+            skillet['labels'] = {}
 
         if 'collection' not in skillet['labels']:
-            skillet['labels']['collection'] = list()
-            skillet['labels']['collection'].append('Kitchen Sink')
-
+            skillet['labels']['collection'] = ['Kitchen Sink']
         return skillet
 
     def dump_yaml(self) -> str:

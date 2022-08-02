@@ -82,7 +82,7 @@ class Git:
                 except OSError:
                     raise SkilletLoaderException('Repo directory exists!')
 
-                logger.debug("Cloning into {}".format(path))
+                logger.debug(f"Cloning into {path}")
 
                 try:
                     self.Repo = Repo.clone_from(self.repo_url, path)
@@ -106,7 +106,7 @@ class Git:
             return path
 
         else:
-            logger.debug("Cloning into {}".format(path))
+            logger.debug(f"Cloning into {path}")
             self.Repo = Repo.clone_from(self.repo_url, path)
 
         self.path = path
@@ -119,7 +119,7 @@ class Git:
         :param branch_name: Branch to checkout.
         :return: None
         """
-        logger.debug("Checking out: " + branch_name)
+        logger.debug(f"Checking out: {branch_name}")
 
         if self.update:
             logger.debug("Updating branch.")
@@ -141,7 +141,7 @@ class Git:
         :return:
         """
 
-        submodule_list = list()
+        submodule_list = []
 
         if path is not None:
             self.path = path
@@ -152,9 +152,7 @@ class Git:
                 self.Repo = Repo(self.path)
 
             submodules = self.Repo.submodules
-            for sm in submodules:
-                submodule_list.append(sm.path)
-
+            submodule_list.extend(sm.path for sm in submodules)
             return submodule_list
 
         except GitCommandError as gce:
